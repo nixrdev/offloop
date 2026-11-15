@@ -32,6 +32,8 @@ class OffloopAccessibilityService : AccessibilityService() {
     private var snoozeUntil = 0L
     private var lastExitAt = 0L
 
+    private var periodicCheckRunnable: Runnable? = null
+
     private val isDebuggable by lazy {
         applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
     }
@@ -67,16 +69,11 @@ class OffloopAccessibilityService : AccessibilityService() {
             if (isWindowChange && isInCall()) {
                 hideOverlay()
                 scheduleIntervention(CALL_RETRY_MS)
-            } else if (isWindowChange && target == null && hasLeftTarget()) {
-                leaveTarget()
             }
             return
         }
 
         if (target == null) {
-            if (isWindowChange && hasLeftTarget()) {
-                leaveTarget()
-            }
             return
         }
 
@@ -112,6 +109,7 @@ class OffloopAccessibilityService : AccessibilityService() {
 
         if (detection == null) {
             cancelIntervention()
+            stopPeriodicCheck()
             if (previous != null) {
                 Log.i(TAG, "Left ${target.displayName} short-form surface")
             }
@@ -122,6 +120,7 @@ class OffloopAccessibilityService : AccessibilityService() {
             Log.i(TAG, "Detected ${detection.surface.label} (${detection.signal})")
         }
         ensureIntervention()
+        ensurePeriodicCheck()
     }
 
     /**
@@ -149,6 +148,7 @@ class OffloopAccessibilityService : AccessibilityService() {
         }
         interventionRunnable = runnable
         handler.postDelayed(runnable, delayMs)
+        ensurePeriodicCheck()
     }
 
     private fun fireIntervention() {
@@ -210,6 +210,7 @@ class OffloopAccessibilityService : AccessibilityService() {
             onLeave = { exitToHome("overlay") },
             onStay = { stayOneMoreMinute() }
         ).also { it.show() }
+        ensurePeriodicCheck()
     }
 
     private fun isInCall(): Boolean {
@@ -229,8 +230,23 @@ class OffloopAccessibilityService : AccessibilityService() {
             return
         }
 
-        val surface = activeDetection?.surface?.label
-        Log.i(TAG, "Auto-exit to home ($reason)" + (surface?.let { " from $it" } ?: ""))
+        // Before pressing Home, confirm a short-form surface is still on screen.
+        // If the user moved to another app (e.g. payment/UPI via notification or
+        // Instagram shop link) and the leave event was missed, we must not close
+        // that app mid-transaction.
+        val detection = detectOnScreen()
+        if (detection == null) {
+            Log.i(TAG, "Auto-exit cancelled: no short-form surface on screen (user may have switched apps)")
+            hideOverlay()
+            cancelIntervention()
+            activeDetection = null
+            lastTarget = null
+            snoozeUntil = 0
+            return
+        }
+
+        val surface = detection.surface.label
+        Log.i(TAG, "Auto-exit to home ($reason) from $surface")
 
         hideOverlay()
         cancelIntervention()
@@ -272,10 +288,77 @@ class OffloopAccessibilityService : AccessibilityService() {
 
         cancelIntervention()
         hideOverlay()
+        stopPeriodicCheck()
 
         snoozeUntil = 0
         lastTarget = null
         activeDetection = null
+    }
+
+    /**
+     * Periodically verifies that the active window still belongs to the target
+     * app and the short-form surface is still detected. Runs only while an
+     * intervention is scheduled or the overlay is showing, so there is no
+     * battery cost when idle.
+     */
+    private fun ensurePeriodicCheck() {
+        if (periodicCheckRunnable != null) return
+
+        val shouldRun = interventionRunnable != null || pauseOverlay?.isShowing == true
+        if (!shouldRun) return
+
+        val runnable = object : Runnable {
+            override fun run() {
+                periodicCheckRunnable = null
+                performPeriodicCheck()
+            }
+        }
+        periodicCheckRunnable = runnable
+        handler.postDelayed(runnable, PERIODIC_CHECK_INTERVAL_MS)
+    }
+
+    private fun performPeriodicCheck() {
+        val target = lastTarget
+        if (target == null) {
+            stopPeriodicCheck()
+            return
+        }
+
+        val root = rootInActiveWindow
+        if (root == null) {
+            Log.i(TAG, "Periodic check: no active window, leaving target")
+            leaveTarget()
+            return
+        }
+
+        val activePackage = root.packageName?.toString()
+        val stillInTarget = activePackage == target.packageName
+
+        if (!stillInTarget) {
+            root.recycle()
+            Log.i(TAG, "Periodic check: user switched to $activePackage, leaving target")
+            leaveTarget()
+            return
+        }
+
+        val detection = try {
+            detector.detect(target, root)
+        } finally {
+            root.recycle()
+        }
+
+        if (detection == null) {
+            Log.i(TAG, "Periodic check: surface no longer detected, leaving target")
+            leaveTarget()
+            return
+        }
+
+        ensurePeriodicCheck()
+    }
+
+    private fun stopPeriodicCheck() {
+        periodicCheckRunnable?.let(handler::removeCallbacks)
+        periodicCheckRunnable = null
     }
 
     /**
@@ -343,6 +426,7 @@ class OffloopAccessibilityService : AccessibilityService() {
     private fun stopBlocking() {
         cancelIntervention()
         hideOverlay()
+        stopPeriodicCheck()
         activeDetection = null
         lastTarget = null
     }
@@ -357,6 +441,7 @@ class OffloopAccessibilityService : AccessibilityService() {
         private const val SNOOZE_MS = 60_000L
         private const val EXIT_COOLDOWN_MS = 5_000L
         private const val CALL_RETRY_MS = 10_000L
+        private const val PERIODIC_CHECK_INTERVAL_MS = 2_500L
 
         private val DEBUG_KEYWORDS = listOf("reel", "short", "clip", "viewer", "player", "pager", "recycler")
     }
