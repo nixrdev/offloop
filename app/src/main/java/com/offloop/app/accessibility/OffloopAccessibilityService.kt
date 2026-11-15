@@ -33,6 +33,7 @@ class OffloopAccessibilityService : AccessibilityService() {
     private var lastExitAt = 0L
 
     private var periodicCheckRunnable: Runnable? = null
+    private var exitSequenceRunnable: Runnable? = null
 
     private val isDebuggable by lazy {
         applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
@@ -259,46 +260,141 @@ class OffloopAccessibilityService : AccessibilityService() {
         activeDetection = null
         lastTarget = null
         snoozeUntil = 0
+
+        // Cooldown starts when we begin the exit sequence
         lastExitAt = SystemClock.elapsedRealtime()
 
-        exitToFeed(target)
+        startExitToFeedSequence(target)
     }
 
     /**
      * Returns the user to the app's normal feed instead of leaving the app.
-     * Tries, in order:
-     * 1. Click the Home tab in the bottom nav (if visible)
+     * This is an asynchronous sequence that tries, in order:
+     * 1. Click the Home tab in the bottom nav (if visible and confirmed)
      * 2. Press Back up to MAX_BACK_ATTEMPTS times until the surface is gone
      * 3. Fall back to global Home action if the surface is still detected
+     *
+     * The sequence runs on the main thread via Handler.postDelayed and can be
+     * cancelled by a new exit, user leaving the app, snooze, call postponement,
+     * or service destruction.
      */
-    private fun exitToFeed(target: AppTarget) {
+    private fun startExitToFeedSequence(target: AppTarget) {
+        cancelExitSequence()
+
         // Strategy 1: Try clicking the Home tab
         if (tryClickHomeTab(target)) {
-            Log.i(TAG, "Exit strategy: clicked ${target.displayName} Home tab")
+            Log.i(TAG, "Exit strategy: clicked ${target.displayName} Home tab, verifying...")
+            scheduleHomeTabVerification(target)
+        } else {
+            // Strategy 2: Try pressing Back (bounded)
+            Log.i(TAG, "Exit strategy: Home tab not found, trying Back")
+            startBackSequence(target, attempt = 1)
+        }
+    }
+
+    /**
+     * After clicking the Home tab, wait briefly and verify the surface is gone.
+     * If still detected, fall through to the Back sequence.
+     */
+    private fun scheduleHomeTabVerification(target: AppTarget) {
+        val runnable = Runnable {
+            exitSequenceRunnable = null
+
+            val stillDetected = detectOnScreen()
+            if (stillDetected == null) {
+                Log.i(TAG, "Exit strategy: Home tab click confirmed")
+            } else {
+                Log.i(TAG, "Exit strategy: Home tab click did not exit surface, trying Back")
+                startBackSequence(target, attempt = 1)
+            }
+        }
+        exitSequenceRunnable = runnable
+        handler.postDelayed(runnable, HOME_TAB_VERIFY_DELAY_MS)
+    }
+
+    /**
+     * Asynchronous Back retry sequence. Presses Back, waits, checks detection,
+     * and either succeeds, retries, or falls back to Home.
+     */
+    private fun startBackSequence(target: AppTarget, attempt: Int) {
+        // Before pressing Back, confirm the surface and target app are still on screen
+        if (!verifyTargetOnScreen(target)) return
+
+        if (!performGlobalAction(GLOBAL_ACTION_BACK)) {
+            Log.w(TAG, "Back action rejected on attempt $attempt")
+            fallbackToGlobalHome()
             return
         }
 
-        // Strategy 2: Try pressing Back (bounded)
-        Log.i(TAG, "Exit strategy: Home tab not found, trying Back")
-        for (attempt in 1..MAX_BACK_ATTEMPTS) {
-            if (!performGlobalAction(GLOBAL_ACTION_BACK)) {
-                Log.w(TAG, "Back action rejected on attempt $attempt")
-                break
-            }
+        // Schedule a check after the UI settles
+        val runnable = Runnable {
+            exitSequenceRunnable = null
 
-            // Wait briefly to let the UI settle
-            Thread.sleep(BACK_RETRY_DELAY_MS)
-
-            // Check if we've left the short-form surface
             val stillDetected = detectOnScreen()
             if (stillDetected == null) {
                 Log.i(TAG, "Exit strategy: Back successful after $attempt attempt(s)")
-                return
+                return@Runnable
+            }
+
+            if (attempt < MAX_BACK_ATTEMPTS) {
+                startBackSequence(target, attempt + 1)
+            } else {
+                Log.i(TAG, "Exit strategy: Back failed after $attempt attempts, falling back to global Home")
+                fallbackToGlobalHome()
             }
         }
+        exitSequenceRunnable = runnable
+        handler.postDelayed(runnable, BACK_RETRY_DELAY_MS)
+    }
 
-        // Strategy 3: Fall back to Home
-        Log.i(TAG, "Exit strategy: Back failed, falling back to global Home")
+    /**
+     * Verifies that the target app and short-form surface are still on screen.
+     * If not, cancels the exit sequence and returns false.
+     */
+    private fun verifyTargetOnScreen(target: AppTarget): Boolean {
+        val root = rootInActiveWindow
+        if (root == null) {
+            Log.i(TAG, "Exit sequence cancelled: no active window")
+            cancelExitSequence()
+            return false
+        }
+
+        val activePackage = root.packageName?.toString()
+        if (activePackage != target.packageName) {
+            root.recycle()
+            Log.i(TAG, "Exit sequence cancelled: user switched to $activePackage")
+            cancelExitSequence()
+            return false
+        }
+
+        val detection = try {
+            detector.detect(target, root)
+        } finally {
+            root.recycle()
+        }
+
+        if (detection == null) {
+            Log.i(TAG, "Exit sequence cancelled: surface no longer detected")
+            cancelExitSequence()
+            return false
+        }
+
+        return true
+    }
+
+    /**
+     * Last resort: press global Home to leave the app entirely.
+     * Still verifies the surface is on screen before pressing Home.
+     */
+    private fun fallbackToGlobalHome() {
+        cancelExitSequence()
+
+        val detection = detectOnScreen()
+        if (detection == null) {
+            Log.i(TAG, "Global Home skipped: surface no longer detected")
+            return
+        }
+
         if (!performGlobalAction(GLOBAL_ACTION_HOME)) {
             Log.w(TAG, "Global HOME action was rejected")
         }
@@ -355,6 +451,7 @@ class OffloopAccessibilityService : AccessibilityService() {
     private fun stayOneMoreMinute() {
         hideOverlay()
         cancelIntervention()
+        cancelExitSequence()
 
         snoozeUntil = SystemClock.elapsedRealtime() + SNOOZE_MS
         Log.i(TAG, "Stayed for ${SNOOZE_MS / 1_000}s; overlay will re-arm")
@@ -364,6 +461,11 @@ class OffloopAccessibilityService : AccessibilityService() {
     private fun cancelIntervention() {
         interventionRunnable?.let(handler::removeCallbacks)
         interventionRunnable = null
+    }
+
+    private fun cancelExitSequence() {
+        exitSequenceRunnable?.let(handler::removeCallbacks)
+        exitSequenceRunnable = null
     }
 
     private fun hideOverlay() {
@@ -378,6 +480,7 @@ class OffloopAccessibilityService : AccessibilityService() {
         }
 
         cancelIntervention()
+        cancelExitSequence()
         hideOverlay()
         stopPeriodicCheck()
 
@@ -516,6 +619,7 @@ class OffloopAccessibilityService : AccessibilityService() {
 
     private fun stopBlocking() {
         cancelIntervention()
+        cancelExitSequence()
         hideOverlay()
         stopPeriodicCheck()
         activeDetection = null
@@ -536,6 +640,7 @@ class OffloopAccessibilityService : AccessibilityService() {
 
         private const val MAX_BACK_ATTEMPTS = 3
         private const val BACK_RETRY_DELAY_MS = 300L
+        private const val HOME_TAB_VERIFY_DELAY_MS = 400L
 
         private val DEBUG_KEYWORDS = listOf("reel", "short", "clip", "viewer", "player", "pager", "recycler")
     }

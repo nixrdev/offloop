@@ -157,16 +157,21 @@ app/src/main/
   is hidden without closing the other app.
 - **Back to feed, not home.** Instead of leaving the app, Offloop returns you
   to the app's normal feed while staying inside YouTube or Instagram. The exit
-  strategy tries, in order: (a) find and click the app's Home tab in the bottom
-  nav via accessibility nodes (by view ID or content description), (b) press
-  Back up to 3 times with short delays until the short-form surface is no
-  longer detected, (c) fall back to the global Home action if the surface is
-  still detected after that. Home tab view IDs and content descriptions for
-  each app are stored in AppTarget next to the detection view IDs. If a
-  reel/short was opened from somewhere else (e.g. an Instagram DM or a shared
-  link), Back naturally returns there. The 5-second cooldown still prevents
-  instant re-triggering after returning to the feed; landing on the regular
-  feed is not mistaken for a Shorts/Reels surface.
+  strategy is an asynchronous sequence that runs on the main thread via Handler
+  and tries, in order: (a) find and click the app's Home tab in the bottom nav
+  via accessibility nodes (by view ID or content description), then verify after
+  400ms that the surface is gone, (b) press Back up to 3 times with 300ms delays
+  between attempts, checking after each press whether the short-form surface is
+  gone, (c) fall back to the global Home action if the surface is still detected
+  after that. Home tab view IDs and content descriptions for each app are stored
+  in AppTarget next to the detection view IDs. If a reel/short was opened from
+  somewhere else (e.g. an Instagram DM or a shared link), Back naturally returns
+  there. The 5-second cooldown starts when the exit sequence begins and prevents
+  instant re-triggering after returning to the feed; landing on the regular feed
+  is not mistaken for a Shorts/Reels surface. The exit sequence can be cancelled
+  by a new exit, user leaving the app, snooze, call postponement, or service
+  destruction, and never runs two sequences concurrently. Each step re-verifies
+  the target app and surface are still on screen before pressing Back or Home.
 
 ## Google Play caveat
 

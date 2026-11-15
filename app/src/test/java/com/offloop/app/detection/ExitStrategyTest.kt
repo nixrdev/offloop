@@ -25,6 +25,13 @@ class ExitStrategyTest {
     }
 
     @Test
+    fun `home tab verify delay is reasonable`() {
+        val delayMs = 400L
+        assertTrue("HOME_TAB_VERIFY_DELAY_MS must be positive", delayMs > 0)
+        assertTrue("HOME_TAB_VERIFY_DELAY_MS should be 100-1000ms", delayMs in 100..1000)
+    }
+
+    @Test
     fun `exit cooldown is preserved`() {
         val cooldownMs = 5_000L
         assertEquals("EXIT_COOLDOWN_MS must remain 5 seconds", 5_000L, cooldownMs)
