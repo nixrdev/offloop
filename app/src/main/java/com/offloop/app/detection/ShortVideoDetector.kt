@@ -12,6 +12,9 @@ import android.view.accessibility.AccessibilityNodeInfo
  *
  * Instagram calls Stories "reels" internally, so `reel_viewer` IDs belong to
  * the Stories viewer and must not be used here.
+ *
+ * Home tab view IDs and content descriptions for each app are stored in
+ * AppTarget so they live next to the detection IDs and can be updated together.
  */
 class ShortVideoDetector {
 

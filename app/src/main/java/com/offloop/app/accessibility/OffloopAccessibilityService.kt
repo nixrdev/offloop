@@ -230,7 +230,7 @@ class OffloopAccessibilityService : AccessibilityService() {
             return
         }
 
-        // Before pressing Home, confirm a short-form surface is still on screen.
+        // Before taking action, confirm a short-form surface is still on screen.
         // If the user moved to another app (e.g. payment/UPI via notification or
         // Instagram shop link) and the leave event was missed, we must not close
         // that app mid-transaction.
@@ -246,7 +246,12 @@ class OffloopAccessibilityService : AccessibilityService() {
         }
 
         val surface = detection.surface.label
-        Log.i(TAG, "Auto-exit to home ($reason) from $surface")
+        val target = lastTarget ?: run {
+            Log.w(TAG, "Cannot exit: no target app")
+            return
+        }
+
+        Log.i(TAG, "Exiting to feed ($reason) from $surface")
 
         hideOverlay()
         cancelIntervention()
@@ -256,8 +261,94 @@ class OffloopAccessibilityService : AccessibilityService() {
         snoozeUntil = 0
         lastExitAt = SystemClock.elapsedRealtime()
 
+        exitToFeed(target)
+    }
+
+    /**
+     * Returns the user to the app's normal feed instead of leaving the app.
+     * Tries, in order:
+     * 1. Click the Home tab in the bottom nav (if visible)
+     * 2. Press Back up to MAX_BACK_ATTEMPTS times until the surface is gone
+     * 3. Fall back to global Home action if the surface is still detected
+     */
+    private fun exitToFeed(target: AppTarget) {
+        // Strategy 1: Try clicking the Home tab
+        if (tryClickHomeTab(target)) {
+            Log.i(TAG, "Exit strategy: clicked ${target.displayName} Home tab")
+            return
+        }
+
+        // Strategy 2: Try pressing Back (bounded)
+        Log.i(TAG, "Exit strategy: Home tab not found, trying Back")
+        for (attempt in 1..MAX_BACK_ATTEMPTS) {
+            if (!performGlobalAction(GLOBAL_ACTION_BACK)) {
+                Log.w(TAG, "Back action rejected on attempt $attempt")
+                break
+            }
+
+            // Wait briefly to let the UI settle
+            Thread.sleep(BACK_RETRY_DELAY_MS)
+
+            // Check if we've left the short-form surface
+            val stillDetected = detectOnScreen()
+            if (stillDetected == null) {
+                Log.i(TAG, "Exit strategy: Back successful after $attempt attempt(s)")
+                return
+            }
+        }
+
+        // Strategy 3: Fall back to Home
+        Log.i(TAG, "Exit strategy: Back failed, falling back to global Home")
         if (!performGlobalAction(GLOBAL_ACTION_HOME)) {
             Log.w(TAG, "Global HOME action was rejected")
+        }
+    }
+
+    /**
+     * Attempts to find and click the Home tab in the app's bottom navigation.
+     * Returns true if a clickable Home tab was found and clicked.
+     */
+    private fun tryClickHomeTab(target: AppTarget): Boolean {
+        val root = rootInActiveWindow ?: return false
+
+        try {
+            // First try to find by view ID
+            for (viewId in target.homeTabViewIds) {
+                val nodes = root.findAccessibilityNodeInfosByViewId(viewId)
+                val clickable = nodes.firstOrNull { it.isVisibleToUser && it.isClickable }
+                if (clickable != null) {
+                    val clicked = clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                    nodes.forEach { it.recycle() }
+                    if (clicked) {
+                        return true
+                    }
+                } else {
+                    nodes.forEach { it.recycle() }
+                }
+            }
+
+            // Fall back to content description search
+            for (desc in target.homeTabContentDescriptions) {
+                val nodes = root.findAccessibilityNodeInfosByText(desc)
+                val clickable = nodes.firstOrNull { 
+                    it.isVisibleToUser && 
+                    it.isClickable && 
+                    it.contentDescription?.toString()?.equals(desc, ignoreCase = true) == true 
+                }
+                if (clickable != null) {
+                    val clicked = clickable.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                    nodes.forEach { it.recycle() }
+                    if (clicked) {
+                        return true
+                    }
+                } else {
+                    nodes.forEach { it.recycle() }
+                }
+            }
+
+            return false
+        } finally {
+            root.recycle()
         }
     }
 
@@ -442,6 +533,9 @@ class OffloopAccessibilityService : AccessibilityService() {
         private const val EXIT_COOLDOWN_MS = 5_000L
         private const val CALL_RETRY_MS = 10_000L
         private const val PERIODIC_CHECK_INTERVAL_MS = 2_500L
+
+        private const val MAX_BACK_ATTEMPTS = 3
+        private const val BACK_RETRY_DELAY_MS = 300L
 
         private val DEBUG_KEYWORDS = listOf("reel", "short", "clip", "viewer", "player", "pager", "recycler")
     }
