@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Offloop</string>
+    <string name="accessibility_service_label">Offloop</string>
+    <string name="accessibility_service_description">Offloop detects short-form video feeds such as YouTube Shorts and Instagram Reels. All detection happens on this device. No account, no network access.</string>
+    <string name="overlay_brand">OFFLOOP</string>
+    <string name="overlay_title">Pause.</string>
+    <string name="overlay_body">You\'re in the loop. Offloop is taking you out.</string>
+    <string name="overlay_countdown_label">Returning home in</string>
+    <string name="overlay_leave">Leave now</string>
+    <string name="overlay_stay">Stay 1 more minute</string>
+</resources>
