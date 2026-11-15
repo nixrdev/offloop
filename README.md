@@ -128,6 +128,18 @@ app/src/main/
   the service keeps checking the surface and schedules the next pause at the
   end of the snooze instead of forgetting it. Opening Offloop itself counts as
   leaving the feed.
+- **Periodic verification.** The service runs a lightweight check every 2.5
+  seconds while an intervention is scheduled or the overlay is showing to
+  verify the target app and surface are still active. If the user switches
+  away, the overlay is dismissed and state is reset. The periodic check stops
+  when idle to avoid battery cost.
+- **Scoped to target packages.** The accessibility service is restricted to
+  YouTube and Instagram only (least privilege). It does not receive events from
+  payment apps, PIN screens or other apps.
+- **Payment app safety.** Before pressing Home, the service confirms a
+  short-form surface is still on screen. If the user jumped to a payment or
+  shop app via notification or link and the leave event was missed, the overlay
+  is hidden without closing the other app.
 
 ## Google Play caveat
 
