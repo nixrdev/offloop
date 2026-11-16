@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The launcher icon's broken infinity, cropped tight so it can replace the
+     "oo" in the Offloop wordmark and sit on the text baseline. The stroke is
+     heavier than the icon's to match bold text weight. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="67.5dp"
+    android:height="39.35dp"
+    android:viewportWidth="67.5"
+    android:viewportHeight="39.35">
+
+    <group
+        android:translateX="-20.25"
+        android:translateY="-31.9">
+
+        <path
+            android:pathData="M78.3,47.5 C79.39,49.35 80,51.55 80,54 C80,61 75,66 68,66 C63,66 59,62 54,54 C49,46 45,42 40,42 C33,42 28,47 28,54 C28,61 33,66 40,66 C45,66 49,62 54,54 C57.75,48 60.94,44.25 64.4,42.75"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="10.5"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M75.5,35.5 m-3.6,0 a3.6,3.6 0 1,0 7.2,0 a3.6,3.6 0 1,0 -7.2,0" />
+
+    </group>
+
+</vector>

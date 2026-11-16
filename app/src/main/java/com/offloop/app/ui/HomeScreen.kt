@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -35,9 +36,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.offloop.app.R
 import com.offloop.app.detection.AppTarget
 
 @Composable
@@ -60,12 +63,7 @@ fun OffloopHome(
 
             Spacer(Modifier.height(22.dp))
 
-            Text(
-                text = "Offloop",
-                style = MaterialTheme.typography.displaySmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground
-            )
+            OffloopWordmark(style = MaterialTheme.typography.displaySmall)
 
             Spacer(Modifier.height(8.dp))
 
@@ -89,12 +87,12 @@ fun OffloopHome(
 
             Spacer(Modifier.height(20.dp))
 
-            WatchedApps()
+            WatchedApps(enabled = serviceEnabled)
 
             Spacer(Modifier.weight(1f))
 
             Text(
-                text = "Everything runs on this device. No account, no cloud, no tracking.",
+                text = "On-device only · No account · No tracking",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline,
                 textAlign = TextAlign.Center
@@ -126,16 +124,18 @@ private fun StatusCard(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(accent.copy(alpha = 0.18f)),
+                    .size(42.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(accent.copy(alpha = 0.16f)),
                 contentAlignment = Alignment.Center
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(12.dp)
-                        .clip(CircleShape)
-                        .background(accent)
+                Icon(
+                    painter = painterResource(
+                        if (enabled) R.drawable.ic_shield_check else R.drawable.ic_shield_off
+                    ),
+                    contentDescription = null,
+                    tint = accent,
+                    modifier = Modifier.size(22.dp)
                 )
             }
 
@@ -203,17 +203,22 @@ private fun HowItWorksCard(onClick: () -> Unit) {
             .background(MaterialTheme.colorScheme.surface)
             .border(1.dp, MaterialTheme.colorScheme.surfaceVariant, shape)
             .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 18.dp),
+            .padding(start = 16.dp, end = 14.dp, top = 14.dp, bottom = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             modifier = Modifier
-                .size(40.dp)
-                .clip(CircleShape)
+                .size(44.dp)
+                .clip(RoundedCornerShape(14.dp))
                 .background(Lime.copy(alpha = 0.14f)),
             contentAlignment = Alignment.Center
         ) {
-            Text("?", color = Lime, fontWeight = FontWeight.Bold)
+            Icon(
+                painter = painterResource(R.drawable.ic_route),
+                contentDescription = null,
+                tint = Lime,
+                modifier = Modifier.size(22.dp)
+            )
         }
 
         Spacer(Modifier.width(14.dp))
@@ -226,22 +231,33 @@ private fun HowItWorksCard(onClick: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurface
             )
             Text(
-                text = "What happens, your choices, and privacy",
+                text = "The flow, your choices, privacy",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
 
-        Text(
-            text = "›",
-            style = MaterialTheme.typography.headlineMedium,
-            color = MaterialTheme.colorScheme.outline
-        )
+        Spacer(Modifier.width(12.dp))
+
+        Box(
+            modifier = Modifier
+                .size(34.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_chevron_right),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.size(18.dp)
+            )
+        }
     }
 }
 
 @Composable
-private fun WatchedApps() {
+private fun WatchedApps(enabled: Boolean) {
     val context = LocalContext.current
     val icons = remember {
         AppTarget.entries.mapNotNull { target ->
@@ -253,21 +269,35 @@ private fun WatchedApps() {
     if (icons.isEmpty()) return
 
     Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        modifier = Modifier
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.surface)
+            .border(1.dp, MaterialTheme.colorScheme.surfaceVariant, CircleShape)
+            .padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = "Watching",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.outline
+        Icon(
+            painter = painterResource(if (enabled) R.drawable.ic_eye else R.drawable.ic_eye_off),
+            contentDescription = null,
+            tint = if (enabled) Lime else MaterialTheme.colorScheme.outline,
+            modifier = Modifier.size(16.dp)
         )
-        Spacer(Modifier.width(2.dp))
-        icons.forEach { (target, icon) ->
-            Image(
-                bitmap = icon,
-                contentDescription = target.displayName,
-                modifier = Modifier.size(22.dp)
-            )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = if (enabled) "Watching" else "Paused for",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.width(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            icons.forEach { (target, icon) ->
+                Image(
+                    bitmap = icon,
+                    contentDescription = target.displayName,
+                    alpha = if (enabled) 1f else 0.45f,
+                    modifier = Modifier.size(26.dp)
+                )
+            }
         }
     }
 }

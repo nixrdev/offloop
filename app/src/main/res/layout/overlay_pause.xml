@@ -2,7 +2,7 @@
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#F70C0F0A"
+    android:background="#FF0C0F0A"
     android:clickable="true"
     android:fillViewport="true"
     android:focusable="true">
@@ -48,12 +48,15 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="20dp"
+            android:breakStrategy="balanced"
             android:gravity="center"
-            android:lineSpacingExtra="4dp"
+            android:hyphenationFrequency="none"
+            android:lineSpacingExtra="6dp"
             android:text="@string/overlay_body"
-            android:textColor="#C3C8B8"
-            android:textSize="18sp" />
+            android:textColor="#E6E9DE"
+            android:textSize="21sp"
+            android:textStyle="italic" />
 
         <TextView
             android:layout_width="match_parent"
