@@ -6,7 +6,7 @@
     <string name="overlay_brand">OFFLOOP</string>
     <string name="overlay_title">Pause.</string>
     <string name="overlay_body">You\'re in the loop. Offloop is taking you out.</string>
-    <string name="overlay_countdown_label">Returning home in</string>
-    <string name="overlay_leave">Leave now</string>
+    <string name="overlay_countdown_label">Returning to feed in</string>
+    <string name="overlay_leave">Return now</string>
     <string name="overlay_stay">Stay 1 more minute</string>
 </resources>
